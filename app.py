@@ -1,0 +1,64 @@
+from sqlite3 import IntegrityError
+import os
+import traceback
+from flask import Flask, render_template, request, url_for , make_response, flash, redirect
+from models import db, Database, Expenses, getLastCountRecords, get_current_month_total
+
+basedir = os.path.abspath(os.path.dirname(__file__))
+
+# WebApp Create
+app = Flask(__name__)
+
+# WebApp Config
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///expenses.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False 
+app.config["SECRET_KEY"] = "my-secret-key"
+
+# DB Create
+db.init_app(app)
+db_manager = Database()
+
+# Global Vars
+DATE_FORMAT = "%Y-%m-%d"
+CATEGORIES = sorted(["Transportation", "Grocery", "Food", "Cigga", "Green", "Mobile", "Relocation", "Personal", "Entertainment", "Home"])
+ACCOUNT_TYPES=["N26", "Wise", "Deutsche Bank", "Cash"]
+
+with app.app_context():
+    db.create_all()
+    print(f"Database created at: {app.config['SQLALCHEMY_DATABASE_URI']}")
+
+
+@app.route("/")
+def index():
+    return render_template(
+        "index.html", 
+        expenses=getLastCountRecords(),
+        categories=CATEGORIES,
+        accountTypes=ACCOUNT_TYPES,
+        totalExpenseCurrentMonth=get_current_month_total()
+        )
+
+@app.route("/add", methods=["POST"])
+def add():
+    # Get Fields
+    form_data = dict(request.form)
+
+    # Create Record
+    expense_row = Expenses(form_data)        
+
+    # Add Row
+    try:
+        db_manager.insert(expense_row)
+        flash("Expense Row Added", "success")
+        return redirect(url_for("index"))
+    except IntegrityError as e:
+        flash(f"Database Error: Required data missing or invalid.\n{e}", "danger")
+        return redirect(url_for("index"))
+    except Exception as ex:
+        flash("Error adding expense to DB", "error")
+        return redirect(url_for("index"))
+    
+
+if __name__ == "__main__":
+    # Run App
+    app.run(host="0.0.0.0", port=5001, debug=True)
