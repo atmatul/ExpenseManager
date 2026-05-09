@@ -205,12 +205,21 @@
                 <td class="px-4 py-2">{{ exp.description if exp.description else '' }}</td>
                 <td class="px-4 py-2 text-right">€{{ '%.2f'|format(exp.amount) if exp.amount else 0.00 }}</td>
                 <td class="px-4 py-2 text-right">
-                  <button
-                    class="text-rose-300 hover:text-rose-200 text-xs border border-rose-400/30 px-3 py-1 rounded-lg"
+                
+                  <form 
+                  method="post"
+                  action="{{url_for('delete', expense_id=exp.id )}}"
+                  onsubmit="return confirm('Are you sure to delete this record ?')"
                   >
-                    Delete
-                  </button>
-                </td>
+
+                    <button
+                      class="text-rose-300 hover:text-rose-200 text-xs border border-rose-400/30 px-3 py-1 rounded-lg"
+                    >
+                      Delete
+                    </button>
+                  </form>
+                
+              </td>
               </tr>
               {% endfor %}
               
