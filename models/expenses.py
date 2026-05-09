@@ -198,3 +198,32 @@ class ExpenseAnalytics:
         except Exception as e:
             print(e)
             raise Exception(e)
+
+    def getExpensesPerCategoryForCurrentMonth(self) -> list:
+        """
+        Returns a list of tuples: (category, category_expense)
+        summarized for the current month.
+        """
+        try:
+            # 1. Get current month boundaries
+            start_date = DateUtils.getStartOfCurrentMonth()
+            end_date = DateUtils.get_now().date()
+
+            # 2. Build the aggregate query
+            results = (
+                db.session.query(
+                    Expenses.category,
+                    func.sum(Expenses.amount).label("category_expense"),
+                )
+                .filter(Expenses.expense_date.between(start_date, end_date))
+                .group_by(Expenses.category)
+                .order_by(func.sum(Expenses.amount).desc())
+                .all()
+            )
+
+            return results
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"Aggregation Error: {e}")
+            raise Exception(f"Failed to fetch category expenses: {e}")

@@ -82,7 +82,8 @@ def index():
 
     return render_template(
         "index.html",
-        expenses=getLastCountRecords(),
+        # expenses=getLastCountRecords(),
+        expenses=lstRecordsBetweenDates,
         categories=CATEGORIES,
         accountTypes=ACCOUNT_TYPES,
         totalExpenseCurrentMonth=get_current_month_total(),
