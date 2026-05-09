@@ -29,7 +29,7 @@ class Database:
     def delete(self, model_class, record_id):
         """Generic delete by ID."""
         try:
-            record = model_class.query.get(record_id)
+            record = model_class.query.get_or_404(record_id)
             if record:
                 db.session.delete(record)
                 db.session.commit()

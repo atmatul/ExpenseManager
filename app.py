@@ -59,6 +59,20 @@ def add():
         return redirect(url_for("index"))
     
 
+@app.route("/delete/<int:expense_id>", methods=["POST"])
+def delete(expense_id):
+    try:
+        status = db_manager.delete(Expenses, expense_id)
+        if not status:
+            raise Exception
+        flash(f"Record ID: {expense_id} is deleted", "Success")
+        return redirect(url_for("index"))
+    except Exception as e:
+        flash("Exception in deleting Expense", "Error")
+        raise Exception(f"Exception deleting record\n{e}")
+
+
+
 if __name__ == "__main__":
     # Run App
     app.run(host="0.0.0.0", port=5001, debug=True)
