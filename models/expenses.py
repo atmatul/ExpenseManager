@@ -199,7 +199,7 @@ class ExpenseAnalytics:
             print(e)
             raise Exception(e)
 
-    def getExpensesPerCategoryForCurrentMonth(self) -> list:
+    def getExpensesPerCategoryForCurrentMonth() -> list:
         """
         Returns a list of tuples: (category, category_expense)
         summarized for the current month.
@@ -210,6 +210,7 @@ class ExpenseAnalytics:
             end_date = DateUtils.get_now().date()
 
             # 2. Build the aggregate query
+            # TODO: Make this chart dynamic by filtering on selected category and reflect on FE
             results = (
                 db.session.query(
                     Expenses.category,
