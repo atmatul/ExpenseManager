@@ -79,6 +79,12 @@ def index():
     totalDefaultFilterView = float(
         round(sum([e.amount for e in lstRecordsBetweenDates]), 2)
     )
+    lstExpensesByCategory = ExpenseAnalytics.getExpensesPerCategoryForCurrentMonth()
+    lstCategoryLabels = [c for c, _ in lstExpensesByCategory]
+    lstCategoryTotalAmount = [round(float(v), 2) for _, v in lstExpensesByCategory]
+
+    print(lstExpensesByCategory)
+    print(lstCategoryLabels)
 
     return render_template(
         "index.html",
@@ -93,6 +99,8 @@ def index():
         today=DateUtils.get_today_date(),
         lstDefaultFilterView=lstRecordsBetweenDates,
         totalDefaultFilterView=totalDefaultFilterView,
+        lstCategoryLabels=lstCategoryLabels,
+        lstCategoryTotalAmount=lstCategoryTotalAmount,
     )
 
 
