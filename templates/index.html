@@ -212,8 +212,8 @@
     </section>
 
     <script>
-      const categoryLabels = {{(lstCategoryLabels or[]) | tojson}};
-      const categoryAmount = {{(lstCategoryTotalAmount or[]) | tojson}};
+      const categoryLabels = JSON.parse('{{ (lstCategoryLabels or []) | tojson | safe }}');
+      const categoryAmount = JSON.parse('{{ (lstCategoryTotalAmount or []) | tojson | safe }}');
 
       if (document.getElementById("catChart")) {
         const catCtx = document.getElementById("catChart").getContext("2d")
