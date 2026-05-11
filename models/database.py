@@ -2,8 +2,8 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
 import traceback
 
-# This is the shared SQLAlchemy instance
 db = SQLAlchemy()
+
 
 class Database:
     _instance = None
@@ -22,7 +22,7 @@ class Database:
         except Exception as e:
             db.session.rollback()
             print("--- DATABASE CRASH LOG ---")
-            traceback.print_exc() # This prints the full stack trace to the terminal
+            traceback.print_exc()  # This prints the full stack trace to the terminal
             print("--------------------------")
             raise e
 

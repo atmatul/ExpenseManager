@@ -62,7 +62,7 @@ def index():
 
     start_date = (request.args.get("filter_start_date", "")).strip()
     end_date = (request.args.get("filter_end_date", "")).strip()
-    selectedCategory = (request.args.get("categories", "")).strip()
+    selectedCategory = (request.args.get("category", "")).strip()
 
     start_date = DateUtils.getDateTimeFromStingDate(start_date)
     end_date = DateUtils.getDateTimeFromStingDate(end_date)
@@ -82,9 +82,9 @@ def index():
     lstExpensesByCategory = ExpenseAnalytics.getExpensesPerCategoryForCurrentMonth()
     lstCategoryLabels = [c for c, _ in lstExpensesByCategory]
     lstCategoryTotalAmount = [round(float(v), 2) for _, v in lstExpensesByCategory]
-
-    print(lstExpensesByCategory)
-    print(lstCategoryLabels)
+    lstCategoryTotalAmountCurrentMonth = (
+        ExpenseAnalytics.getTotalExpensesForCurrentMonthPerCategory()
+    )
 
     return render_template(
         "index.html",
@@ -101,6 +101,7 @@ def index():
         totalDefaultFilterView=totalDefaultFilterView,
         lstCategoryLabels=lstCategoryLabels,
         lstCategoryTotalAmount=lstCategoryTotalAmount,
+        totalAmountCurrentMonth=totalAmountCurrentMonth,
     )
 
 
