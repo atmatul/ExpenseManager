@@ -82,9 +82,6 @@ def index():
     lstExpensesByCategory = ExpenseAnalytics.getExpensesPerCategoryForCurrentMonth()
     lstCategoryLabels = [c for c, _ in lstExpensesByCategory]
     lstCategoryTotalAmount = [round(float(v), 2) for _, v in lstExpensesByCategory]
-    lstCategoryTotalAmountCurrentMonth = (
-        ExpenseAnalytics.getTotalExpensesForCurrentMonthPerCategory()
-    )
 
     return render_template(
         "index.html",
@@ -101,7 +98,6 @@ def index():
         totalDefaultFilterView=totalDefaultFilterView,
         lstCategoryLabels=lstCategoryLabels,
         lstCategoryTotalAmount=lstCategoryTotalAmount,
-        totalAmountCurrentMonth=totalAmountCurrentMonth,
     )
 
 
@@ -137,6 +133,35 @@ def delete(expense_id):
     except Exception as e:
         flash("Exception in deleting Expense", "Error")
         raise Exception(f"Exception deleting record\n{e}")
+
+
+@app.route("/edit/<int:expense_id>", methods=["POST"])
+def edit(expense_id):
+    print(f"Editing Expnses for ID: {expense_id}")
+    expenseObj = ExpenseAnalytics.getExpenseRowById(expenseId=expense_id)
+    print(expenseObj)
+    try:
+        # return redirect(url_for("edit"))
+        return render_template("edit.html", expense=expenseObj, categories=CATEGORIES)
+    except Exception as e:
+        flash("Exception in editing Expense", "Error")
+        raise Exception(f"Exception editing record\n{e}")
+
+
+@app.route("/edit_post/<int:expense_id>", methods=["POST"])
+def edit_post(expense_id):
+    print(f"Editing Post Expnses for ID: {expense_id}")
+    expenseObj = ExpenseAnalytics.getExpenseRowById(expenseId=expense_id)
+    print(expenseObj)
+    try:
+        # return redirect(url_for("edit"))
+        expenseObj.updateRow(dict(request.form))
+        return render_template("edit.html", expense=expenseObj, categories=CATEGORIES)
+    except Exception as e:
+        flash("Exception in editing Expense", "Error")
+        raise Exception(f"Exception editing record\n{e}")
+    finally:
+        return redirect(url_for("index"))
 
 
 if __name__ == "__main__":

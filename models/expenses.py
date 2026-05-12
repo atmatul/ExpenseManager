@@ -1,3 +1,5 @@
+import traceback
+
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import extract, func
 from sqlalchemy.orm import validates
@@ -58,6 +60,73 @@ class Expenses(db.Model):
             raise ValueError("Amount should be more than Eur 0")
 
         return True
+
+    def updateRow(self, dct_form: dict) -> bool:
+        """
+        Updates an existing expense record.
+        Guardrail: Compares form data with current DB state and logs changes.
+        """
+        try:
+            print(f"what is returned ? \n {dct_form}")
+            # 1. Fetch the existing record by ID
+            expense_id = dct_form.get("id")
+            expense = Expenses.query.get(expense_id)
+
+            if not expense:
+                print(f"Update Guardrail: ID {expense_id} not found in database.")
+                return False
+
+            # 2. Define the mapping of form keys to model attributes
+            # Key: Form field name, Value: Database column name
+            fields_to_check = {
+                "amount": "amount",
+                "category": "category",
+                "expense_date": "expense_date",
+                "description": "description",
+            }
+
+            updated_fields = []
+
+            # 3. Guardrail: Detect changes
+            for form_key, db_attr in fields_to_check.items():
+                if form_key in dct_form:
+                    new_value = dct_form[form_key]
+                    old_value = getattr(expense, db_attr)
+
+                    # Special handling for dates if they arrive as strings
+                    if db_attr == "expense_date" and isinstance(new_value, str):
+                        new_value = DateUtils.format_string_to_datetime(
+                            new_value
+                        ).date()
+
+                    # Cast new_value to match type (e.g., amount as float)
+                    if db_attr == "amount":
+                        new_value = float(new_value)
+
+                    if str(old_value) != str(new_value):
+                        setattr(expense, db_attr, new_value)
+                        updated_fields.append(db_attr)
+
+            # 4. Commit if changes were made
+            if updated_fields:
+                db.session.flush()
+                db.session.commit()
+                db.session.refresh(expense)
+                print(
+                    f"Successfully updated ID {expense_id}. Changed fields: {updated_fields}"
+                )
+                return True
+            else:
+                print(f"No changes detected for ID {expense_id}. Update skipped.")
+                return True
+
+        except Exception as e:
+            db.session.rollback()
+            print("--- DATABASE CRASH LOG ---")
+            traceback.print_exc()  # This prints the full stack trace to the terminal
+            print("--------------------------")
+            print(f"Database Error during update: {e}")
+            return False
 
 
 def summarize(self) -> list:
@@ -228,3 +297,14 @@ class ExpenseAnalytics:
             db.session.rollback()
             print(f"Aggregation Error: {e}")
             raise Exception(f"Failed to fetch category expenses: {e}")
+
+    def getExpenseRowById(expenseId) -> Expenses:
+        """
+        Retrieve 1 row of data from expenses by Id.
+        """
+        if expenseId is None or (isinstance(expenseId, str) and expenseId == ""):
+            raise ValueError(f"Expense Id is Null")
+        try:
+            return Expenses.query.get_or_404(expenseId)
+        except Exception as e:
+            raise Exception(e)
