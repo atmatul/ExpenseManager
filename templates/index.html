@@ -30,6 +30,7 @@
       <section class="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900 p-4">
         <h2 class="text-lg font-semibold mb-3">Filters</h2>
         <form method="get" action="{{url_for('index')}}" class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end pr-5">
+          
           <label class="text-sm">
             <span class="block mb-1 text-slate-300">Start</span>
             <input name="filter_start_date" value="{{filter_start_date or ''}}" type="date"
@@ -171,18 +172,21 @@
               <td class="px-4 py-2">{{ exp.description if exp.description else '' }}</td>
               <td class="px-4 py-2 text-right">€{{ '%.2f'|format(exp.amount) if exp.amount else 0.00 }}</td>
               <td class="px-4 py-2 text-right">
-
-                <form method="post" action="{{url_for('delete', expense_id=exp.id )}}"
-                  onsubmit="return confirm('Are you sure to delete this record ?')">
-
-                  <button
-                    class="text-rose-300 hover:text-rose-200 text-xs border border-rose-400/30 px-3 py-1 rounded-lg">
-                    Delete
-                  </button>
+                <form 
+                  method="post" 
+                  action="{{url_for('edit', expense_id=exp.id)}}" 
+                  onsubmit="return confirm('Are you sure to edit this record ?')">
+                  <button class="text-rose-300 hover:text-rose-200 text-xs border border-rose-400/30 px-3 py-1 rounded-lg mr-1">Edit</button>
                 </form>
 
+                <form 
+                  method="post" 
+                  action="{{url_for('delete', expense_id=exp.id)}}" 
+                  onsubmit="return confirm('Are you sure to delete this record ?')">
+                  <button class="text-rose-300 hover:text-rose-200 text-xs border border-rose-400/30 px-3 py-1 rounded-lg">Delete</button>
+                </form>
               </td>
-            </tr>
+          </tr>
             {% endfor %}
 
             {% else %}
@@ -212,8 +216,8 @@
     </section>
 
     <script>
-      const categoryLabels = {{(lstCategoryLabels or[]) | tojson}};
-      const categoryAmount = {{(lstCategoryTotalAmount or[]) | tojson}};
+      const categoryLabels = JSON.parse('{{ (lstCategoryLabels or []) | tojson | safe }}');
+      const categoryAmount = JSON.parse('{{ (lstCategoryTotalAmount or []) | tojson | safe }}');
 
       if (document.getElementById("catChart")) {
         const catCtx = document.getElementById("catChart").getContext("2d")

@@ -7,6 +7,7 @@
 
   <section class="max-w-xl rounded-2xl border border-slate-800 bg-slate-900 p-4">
     <form method="post" action="{{ url_for('edit_post', expense_id=expense.id) }}" class="space-y-3">
+      <input type="hidden" name="id" value="{{ expense.id }}">
       <label class="block text-sm">
         <span class="mb-1 block text-slate-300">Description</span>
         <input name="description"
@@ -15,16 +16,18 @@
       </label>
 
       <div class="grid grid-cols-2 gap-3">
+        
         <label class="block text-sm">
           <span class="mb-1 block text-slate-300">Amount</span>
           <input type="number" step="0.01" min="0.01" name="amount"
                  value="{{ '%.2f'|format(expense.amount) }}"
                  class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100" />
         </label>
+        
         <label class="block text-sm">
           <span class="mb-1 block text-slate-300">Date</span>
           <input type="date" name="date"
-                 value="{{ expense.date.strftime('%Y-%m-%d') if expense.date else today }}"
+                 value="{{ expense.expense_date.strftime('%Y-%m-%d') if expense.expense_date else today }}"
                  class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100" />
         </label>
       </div>
