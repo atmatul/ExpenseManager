@@ -224,5 +224,4 @@ __marimo__/
 uv.lock
 .continue
 
-# TODO: Remove this ignore
-README.md
+data/
