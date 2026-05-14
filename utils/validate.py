@@ -105,7 +105,7 @@ def validateExpenseObjectDuplicacy(dctData: dict, db_conn) -> bool:
         return False
 
 
-def validateExpenseFile(dfExpenseFile: pd.DataFrame) -> bool:
+def validateExpenseFile(dfExpenseFile: pd.DataFrame) -> tuple:
     """
     Data Integrity Check for Expense File inserted from st.file_uploader.
     Uses vectorized operations for high performance on large CSVs.
@@ -153,8 +153,8 @@ def validateExpenseFile(dfExpenseFile: pd.DataFrame) -> bool:
 
         is_valid = len(errors) == 0
         return is_valid, errors
-    except Exception:
-        return False
+    except Exception as e:
+        return False, [str(e)]
 
 
 def validateDataPreAppend(dfExpense: pd.DataFrame) -> int:
@@ -217,6 +217,6 @@ def validateDuplicateFileImport(filename: str, db_conn, **args) -> bool:
         res = db_conn.execute(query, [f"%{filename}%"]).fetchone()
 
         return res is None  # True if unique
-    except Exception:
+    except Exception as e:
         logger.error(f"File validation error: {e}")
         return False
