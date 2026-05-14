@@ -1,20 +1,18 @@
 import streamlit as st
 import os
-import pandas as pd
 
+from models.database import dbManager
 from routes import homePage, insertPage
 
 projectDir = os.path.abspath(os.path.dirname(__file__))
 dataDir = os.path.join(projectDir, "data")
-seedFile = os.path.join(dataDir, "seed.csv")
 
 # 1. Page Configuration
 st.set_page_config(page_title="Expense Manager", layout="wide")
 
-# 2. Initialize Session State (The "Bronze" Table)
-if "expenses_df" not in st.session_state:
-    st.session_state.expenses_df = pd.read_csv(seedFile)
-
+# 2. Initialize Database (Singleton - runs only once on first app load)
+# This ensures DB schema is created and seed data is loaded
+_ = dbManager
 
 # 3. Define Pages
 def show_home():
@@ -35,3 +33,4 @@ pg = st.navigation(
     }
 )
 pg.run()
+

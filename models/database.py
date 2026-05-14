@@ -80,6 +80,7 @@ class BaseDB(ABC):
     """Base DB Class to provide structure to DB Manager."""
 
     _instance = None
+    _initialized = False  # Flag to track if DB has been initialized
     tbl_expense_line = "expenses_line"
 
     def __new__(cls):
@@ -88,8 +89,10 @@ class BaseDB(ABC):
             cls._instance = super(BaseDB, cls).__new__(cls)
             # Initialize the connection and schema
             cls._instance.con = db_connection
-            cls._instance.initiate()
-            cls._instance.populate()
+            if not cls._initialized:
+                cls._instance.initiate()
+                cls._instance.populate()
+                cls._initialized = True
         return cls._instance
 
     def initiate(self):
@@ -320,53 +323,58 @@ class DBManager(BaseDB):
             logger.error(f"Insert failed: {e}")
             return False
 
-    def insertExpenseFile(self, file_obj: InsertFileObject) -> int:
-        """Append Insert rows of `InsertFileObject.data` into `expenses_line`
-        How ?
-        insert_obj = {
-                ts: timestamp of insert call (good to avoid duplicates),
-                filename: upload_file_name
-                validate_unique_file: True/False,
-                validated_structure: True/False,
-                validated_duplicates: True/False,
-                data_obj: pd.Dataframe
-        }
-        if all(validate_unique_file, validated_structure, validated_duplicates):
-            insert data_obj to expenses_line
-            insert file_markers to integrity_file_imported
-        else:
-            raise IntegrityError based on which ever value in if is False.
-
-        Returns : no of impacted rows in table `expenses_line`
-        0 if action fails
+    def insertExpenseFile(self, file_obj: InsertFileObject) -> tuple:
+        """Append rows of `InsertFileObject.data` into `expenses_line`
+        
+        Returns: (success: bool, message: str or dict)
+            On success: (True, row_count_inserted)
+            On structural error: (False, error_details_list)
+            On duplicate file: (False, error_message_str)
+            On intra-file duplicates: (False, duplicate_details_list)
         """
 
         try:
             # 1. Run Validations
-            file_obj.is_unique = validateDuplicateFileImport(
+            file_obj.is_unique, file_import_info = validateDuplicateFileImport(
                 file_obj.filename, self.con
             )
-            file_obj.has_structural_integrity = validateExpenseFile(file_obj.data)
-            file_obj.has_unique_rows = validateDataPreAppend(file_obj.data) == 0
+            file_obj.has_structural_integrity, structural_errors = validateExpenseFile(file_obj.data)
+            dup_count, dup_details = validateDataPreAppend(file_obj.data)
+            file_obj.has_unique_rows = (dup_count == 0)
 
+            # 2. Check structural integrity
             if not file_obj.has_structural_integrity:
-                # EXPLICIT LOGGING: Loop through the list of errors generated in validate.py
-                for error in file_obj.structural_errors:
-                    logger.error(
-                        f"FILE INTEGRITY FAILURE [{file_obj.filename}]: {error}"
-                    )
+                error_msg = f"FILE STRUCTURAL INTEGRITY FAILURE [{file_obj.filename}]:\n"
+                if structural_errors:
+                    for error in structural_errors:
+                        error_msg += f"  - {error}\n"
+                    logger.error(error_msg)
+                raise duckdb.IntegrityError(error_msg)
 
-                raise duckdb.IntegrityError(
-                    f"Structural integrity failed: {file_obj.structural_errors}"
-                )
-
+            # 3. Check if file has already been imported
             if not file_obj.is_unique:
-                logger.error(
-                    f"FILE DUPLICATION: {file_obj.filename} has already been processed."
-                )
-                raise duckdb.IntegrityError("Duplicate file detected")
+                error_msg = f"FILE ALREADY IMPORTED [{file_obj.filename}]:\n"
+                if file_import_info:
+                    error_msg += f"  Previously imported on: {file_import_info.get('date_imported')}\n"
+                    error_msg += f"  Rows imported: {file_import_info.get('no_of_rows_imported')}\n"
+                logger.error(error_msg)
+                raise duckdb.IntegrityError(error_msg)
 
-            # 2. Integrity Guardrail
+            # 4. Check for intra-file duplicates
+            if not file_obj.has_unique_rows:
+                error_msg = f"DUPLICATE ROWS IN FILE [{file_obj.filename}]:\n"
+                if dup_details:
+                    for idx, dup in enumerate(dup_details, 1):
+                        error_msg += f"  Duplicate {idx}:\n"
+                        error_msg += f"    Date: {dup.get('date')}\n"
+                        error_msg += f"    Amount: {dup.get('amount')}\n"
+                        error_msg += f"    From: {dup.get('from_account')}\n"
+                        error_msg += f"    Towards: {dup.get('towards')}\n"
+                        error_msg += f"    Occurs {dup.get('occurrence_count')} times\n"
+                logger.error(error_msg)
+                raise duckdb.IntegrityError(error_msg)
+
+            # 5. Integrity Guardrail - All checks passed
             if all(
                 [
                     file_obj.is_unique,
@@ -391,9 +399,11 @@ class DBManager(BaseDB):
                         ]
                     )
                     self.con.append("integrity_file_imported", marker_data)
-                    return row_count
+                    success_msg = f"Successfully imported {row_count} rows from {file_obj.filename}"
+                    logger.info(success_msg)
+                    return True, row_count
             else:
-                # Identify which validation failed for the error message
+                # Should not reach here, but handle just in case
                 error_msg = []
                 if not file_obj.is_unique:
                     error_msg.append("File already imported")
@@ -405,72 +415,83 @@ class DBManager(BaseDB):
 
         except duckdb.IntegrityError as ie:
             logger.error(f"Insert aborted: {str(ie)}")
-            return 0
+            return False, str(ie)
         except Exception as e:
-            print(f"insertExpenseFile Error: {e}")
-            return 0
+            logger.error(f"insertExpenseFile unexpected error: {e}", exc_info=True)
+            return False, f"Unexpected error: {str(e)}"
 
-    def insertExpenseRow(self, row_obj: InsertRowObject) -> int:
+    def insertExpenseRow(self, row_obj: InsertRowObject) -> tuple:
         """Append 1 row of `InsertRowObject.data` into `expenses_line`
 
         `InsertRowObject.data` is a dict with all must keys available and valid:
-            - validate.validateExpenseObjectIntegrity => True
-            - validate.validateExpenseObjectDuplicacy => True
+            - validate.validateExpenseObjectIntegrity => (True, None)
+            - validate.validateExpenseObjectDuplicacy => (True, None)
 
-        How ?
-        insert_row = {
-            ts: timestamp of insert call (good to avoid duplicates),
-            validate_structural_integirty : True/False,
-            validated_duplicates: True/False,
-            data_obj: dict
-        }
-
-        if all(validate_structural_integirty, validated_duplicates):
-            convert row to pd.Dataframe
-            insert data_obj to expenses_line
-        else:
-            raise IntegrityError based on which ever value in if is False.
-
-        Returns : no of impacted rows in table `expenses_line`
-        0 if action fails
+        Returns: (success: bool, message: str or dict)
+            On success: (True, "Record inserted successfully")
+            On structural error: (False, error_details_dict)
+            On duplicate: (False, duplicate_record_dict)
+            On other error: (False, error_message_str)
         """
         logger.info(f"Attempting manual row insert: {row_obj.data.get('Description')}")
         try:
-            # 1. Run Validations
-            row_obj.has_structural_integrity = validateExpenseObjectIntegrity(
+            # 1. Run Validations - both return (is_valid, details)
+            row_obj.has_structural_integrity, structural_errors = validateExpenseObjectIntegrity(
                 row_obj.data
             )
-            row_obj.is_unique = validateExpenseObjectDuplicacy(row_obj.data, self.con)
-
-            # 2. Logic execution
+            
+            # 2. Check structural integrity first
             if not row_obj.has_structural_integrity:
-                logger.warning("Insert rejected: Structural integrity check failed.")
-                raise duckdb.IntegrityError("Row Insert Blocked: Integrity violation")
+                error_msg = "Row Insert Blocked: Structural Integrity Issue\n"
+                if structural_errors:
+                    if "missing_fields" in structural_errors:
+                        error_msg += f"Missing fields: {', '.join(structural_errors['missing_fields'])}"
+                    elif "field" in structural_errors:
+                        error_msg += f"Field '{structural_errors['field']}': {structural_errors['reason']}\nValue: {structural_errors['value']}"
+                    else:
+                        error_msg += structural_errors.get("reason", "Unknown error")
+                logger.warning(error_msg)
+                raise duckdb.IntegrityError(error_msg)
+            
+            # 3. Check for duplicates
+            row_obj.is_unique, duplicate_record = validateExpenseObjectDuplicacy(row_obj.data, self.con)
+            
             if not row_obj.is_unique:
-                logger.warning("Insert rejected: Duplicate record detected.")
-                raise duckdb.IntegrityError("Row Insert Blocked: Duplicate record")
+                error_msg = "Row Insert Blocked: Duplicate Record Detected\n"
+                if duplicate_record:
+                    error_msg += f"Existing record:\n"
+                    error_msg += f"  Date: {duplicate_record.get('expense_date')}\n"
+                    error_msg += f"  Description: {duplicate_record.get('description')}\n"
+                    error_msg += f"  Amount: {duplicate_record.get('expend_amount')}\n"
+                    error_msg += f"  Category: {duplicate_record.get('parent_category')}\n"
+                    error_msg += f"  From: {duplicate_record.get('from_account_marker')}\n"
+                    error_msg += f"  Towards: {duplicate_record.get('towards_category')}"
+                logger.warning(error_msg)
+                raise duckdb.IntegrityError(error_msg)
 
+            # 4. Insert the row
             if row_obj.has_structural_integrity and row_obj.is_unique:
                 df_row = pd.DataFrame([row_obj.data])
                 if self.insert(df_row):
-                    return 1
+                    success_msg = "Record inserted successfully"
+                    logger.info(success_msg)
+                    return True, success_msg
             else:
                 error_msg = (
-                    "Integrity violation"
+                    "Structural integrity violation"
                     if not row_obj.has_structural_integrity
-                    else "Duplicate record"
+                    else "Duplicate record detected"
                 )
                 raise duckdb.IntegrityError(
-                    f"Row Insert Blocked: {error_msg}", params=None, orig=None
+                    f"Row Insert Blocked: {error_msg}"
                 )
 
         except duckdb.IntegrityError as ie:
-            # Catch known integrity errors gracefully
             logger.error(f"Insert aborted: {str(ie)}")
-            return 0
+            return False, str(ie)
         except Exception as e:
             logger.error(f"insertExpenseRow unexpected error: {e}", exc_info=True)
-            return 0
+            return False, f"Unexpected error: {str(e)}"
 
 
 # Singleton global instance

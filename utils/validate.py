@@ -6,103 +6,132 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def validateExpenseObjectIntegrity(dctData: dict) -> bool:
+def validateExpenseObjectIntegrity(dctData: dict) -> tuple:
     """
     Validate structural integrity of expense row insert from st.form.
-    Checks for required keys, prohibited symbols, positive amounts, and date validity.
-
+    Returns: (is_valid: bool, error_details: dict or None)
+    
     Checks:
-        - Must Columns [Description, Date, Amount, From Account, To Account]
+        - Must Columns [Description, Date, Amount, From Account, To Account, Category]
         - Description doesnt contain "!@#$%^&*()-=+<>?,./" etc symbol
         - Amount is number and positive
         - Date format.
     """
     try:
-        logger.info(f"dctData: {dctData}")
+        logger.info(f"Validating row: {dctData}")
+        error_details = {}
+        
         # 1. Must Columns Check
-        must_cols = ["Description", "Date", "Amount", "From Account", "To Account"]
-        for col in must_cols:
-            if col not in dctData:
-                logger.error(f"Validation Error: Missing required column '{col}'")
-                return False
+        must_cols = ["Description", "Date", "Amount", "From Account", "To Account", "Category"]
+        missing_cols = [col for col in must_cols if col not in dctData or dctData[col] is None or str(dctData[col]).strip() == ""]
+        if missing_cols:
+            error_details["missing_fields"] = missing_cols
+            logger.error(f"Missing required fields: {missing_cols}")
+            return False, error_details
 
         # 2. Description Symbol Check (prohibits !@#$%^&*()-=+<>?,./)
         description = str(dctData.get("Description", ""))
         if re.search(r"[!@#$%^&*()\-=+<>?,./]", description):
-            logger.warning(
-                f"Validation Warning: Prohibited symbols found in description: {dctData.get('Description')}"
-            )
-            return False
+            error_details["field"] = "Description"
+            error_details["reason"] = "Contains prohibited symbols (!@#$%^&*()-=+<>?,./)"
+            error_details["value"] = description
+            logger.error(f"Invalid description: {description}")
+            return False, error_details
 
         # 3. Amount Check (Must be a positive number)
-        amount = float(dctData["Amount"])
-        if amount <= 0:
-            return False
+        try:
+            amount = float(dctData["Amount"])
+            if amount <= 0:
+                error_details["field"] = "Amount"
+                error_details["reason"] = "Amount must be positive (> 0)"
+                error_details["value"] = dctData["Amount"]
+                logger.error(f"Invalid amount: {amount}")
+                return False, error_details
+        except (ValueError, TypeError):
+            error_details["field"] = "Amount"
+            error_details["reason"] = "Amount must be a valid number"
+            error_details["value"] = dctData["Amount"]
+            logger.error(f"Amount is not numeric: {dctData['Amount']}")
+            return False, error_details
 
         # 4. Date Format Validation
-        pd.to_datetime(dctData["Date"])
+        try:
+            pd.to_datetime(dctData["Date"])
+        except (ValueError, TypeError):
+            error_details["field"] = "Date"
+            error_details["reason"] = "Invalid date format"
+            error_details["value"] = dctData["Date"]
+            logger.error(f"Invalid date: {dctData['Date']}")
+            return False, error_details
 
-        return True
-    except (ValueError, TypeError, Exception) as e:
-        logger.error(f"Unexpected validation failure: {str(e)}")
-        return False
+        logger.info("Row passed structural integrity validation")
+        return True, None
+    except Exception as e:
+        error_details = {"reason": f"Unexpected validation failure: {str(e)}"}
+        logger.error(f"Validation exception: {str(e)}", exc_info=True)
+        return False, error_details
 
 
-def validateExpenseObjectDuplicacy(dctData: dict, db_conn) -> bool:
+def validateExpenseObjectDuplicacy(dctData: dict, db_conn) -> tuple:
     """
     Validate Duplicacy of the Expense Row insert against fct_expense.
-    Returns True if the record is unique, False if a duplicate exists.
-
-    How ?
-    duplicate_rows = (
-        select
-            expense_date,
-            description,
-            expend_amount,
-            parent_category,
-            from_account_marker,
-            towards_category
-        from fct_expense
-        where
-            month = month_of(dctdctData.date) and
-            expense_date = dctdctData.date and
-            expend_amount = dctdctData.amount and
-            parent_category = dctdctData.category and
-            from_account_marker = dctdctData.from_account and
-            towards_category = dctdctData.towards
-        order by expense_date desc
-    )
-
-    if len(duplicate_rows) > 0 :
-        expense row exists
-        return false
-    else:
-        return True
-
+    Returns: (is_unique: bool, duplicate_record: dict or None)
+    
+    Checks for duplicate based on:
+        - expense_date (matches Date field)
+        - description (matches Description field)
+        - expend_amount (matches Amount field)
+        - parent_category (matches Category field)
+        - from_account_marker (matches From Account field)
+        - towards_category (matches To Account field)
+    
+    If a duplicate is found, returns the matching record details.
     """
     try:
         # Mapping dict keys to fct_expense columns based on schema
         query = """
-            SELECT id FROM fct_expense
-            WHERE expense_date = ? 
-              AND description = ? 
-              AND expend_amount = ? 
+            SELECT id, expense_date, description, expend_amount, parent_category, 
+                   from_account_marker, towards_category
+            FROM fct_expense
+            WHERE CAST(expense_date AS DATE) = CAST(? AS DATE)
+              AND LOWER(description) = LOWER(?)
+              AND expend_amount = ?
+              AND parent_category = ?
               AND from_account_marker = ?
+              AND towards_category = ?
             LIMIT 1
         """
         params = [
             dctData.get("Date"),
             dctData.get("Description"),
             dctData.get("Amount"),
+            dctData.get("Category"),
             dctData.get("From Account"),
+            dctData.get("To Account"),
         ]
 
         # Execute query via singleton connection
         res = db_conn.execute(query, params).fetchone()
 
-        return res is None  # True if no duplicate found
-    except Exception:
-        return False
+        if res is not None:
+            # Duplicate found - return details
+            duplicate_record = {
+                "id": str(res[0]),
+                "expense_date": str(res[1]),
+                "description": res[2],
+                "expend_amount": res[3],
+                "parent_category": res[4],
+                "from_account_marker": res[5],
+                "towards_category": res[6],
+            }
+            logger.warning(f"Duplicate record found: {duplicate_record}")
+            return False, duplicate_record
+        
+        logger.info("Row is unique - no duplicate found")
+        return True, None
+    except Exception as e:
+        logger.error(f"Duplicacy check error: {str(e)}", exc_info=True)
+        return False, {"error": str(e)}
 
 
 def validateExpenseFile(dfExpenseFile: pd.DataFrame) -> tuple:
@@ -157,28 +186,18 @@ def validateExpenseFile(dfExpenseFile: pd.DataFrame) -> tuple:
         return False, [str(e)]
 
 
-def validateDataPreAppend(dfExpense: pd.DataFrame) -> int:
+def validateDataPreAppend(dfExpense: pd.DataFrame) -> tuple:
     """
     Identifies intra-file duplicate rows based on primary columns.
-    Returns the number of unique combinations that have multiple occurrences.
-        Duplicate Rows:
+    Returns: (duplicate_count: int, duplicate_details: list or None)
+    
+    Duplicate Rows are identified by:
         - Primary Cols [Date, Amount, From Account, To Account]
-
-    - How ?
-    Duplicate_Rows = (
-        with expensegrp as (
-            select date, amount, from_account, to_account, count(*) as dup_cnt
-            from dfExpense
-            group by date, amount, from_account, to_account
-            order by dup_cnt desc
-        )
-        select * from expensegrp where dup_cnt > 1
-    )
-     if len(Duplicate_Rows) > 0 : contains duplicates, identify and fix rows.
-    else: all unique records
-
+    
     Returns:
-        len(Duplicate_Rows)
+        (count, details) where:
+        - count: number of duplicate groups found (0 if no duplicates)
+        - details: list of dicts showing duplicate groups, or None if count == 0
     """
     try:
         primary_cols = ["Date", "Amount", "From Account", "To Account"]
@@ -187,36 +206,54 @@ def validateDataPreAppend(dfExpense: pd.DataFrame) -> int:
         dup_summary = dfExpense.groupby(primary_cols).size().reset_index(name="dup_cnt")
         duplicate_groups = dup_summary[dup_summary["dup_cnt"] > 1]
 
-        return len(duplicate_groups)
-    except Exception:
-        return 0
+        if len(duplicate_groups) == 0:
+            logger.info("No intra-file duplicates found")
+            return 0, None
+        
+        # Format duplicate details
+        duplicate_details = []
+        for _, row in duplicate_groups.iterrows():
+            duplicate_details.append({
+                "date": str(row["Date"]),
+                "amount": float(row["Amount"]),
+                "from_account": str(row["From Account"]),
+                "towards": str(row["To Account"]),
+                "occurrence_count": int(row["dup_cnt"]),
+            })
+        
+        logger.warning(f"Found {len(duplicate_groups)} duplicate groups in file")
+        return len(duplicate_groups), duplicate_details
+    except Exception as e:
+        logger.error(f"Error checking intra-file duplicates: {str(e)}", exc_info=True)
+        return 0, None
 
 
-def validateDuplicateFileImport(filename: str, db_conn, **args) -> bool:
+def validateDuplicateFileImport(filename: str, db_conn, **args) -> tuple:
     """
     Validates if a filename has already been logged in integrity_file_imported.
+    Returns: (is_unique: bool, import_info: dict or None)
 
-    How?
-    duplicate_file = (
-        select * from integrity_file_imported where filename like '%filename%'
-    )
-
-    if len(duplicate_file) > 0:
-        file {filename} has been imported on `duplicate_file.ts`
-        return False
-    else:
-        unique file
-        return True
-
-    Future Improvements:
-        identify file markers in **args
+    If file has been imported before, returns details of the previous import.
+    Otherwise returns (True, None) indicating the file is unique.
     """
     try:
-        query = "SELECT id FROM integrity_file_imported WHERE filename LIKE ?"
+        query = "SELECT id, ts, filename, date_imported, no_of_rows_imported FROM integrity_file_imported WHERE filename LIKE ?"
         # Using wildcard search as specified in docstring
         res = db_conn.execute(query, [f"%{filename}%"]).fetchone()
 
-        return res is None  # True if unique
+        if res is not None:
+            import_info = {
+                "id": str(res[0]),
+                "timestamp": str(res[1]),
+                "filename": res[2],
+                "date_imported": str(res[3]),
+                "no_of_rows_imported": int(res[4]),
+            }
+            logger.warning(f"File already imported: {import_info}")
+            return False, import_info
+        
+        logger.info(f"File {filename} is unique - not previously imported")
+        return True, None
     except Exception as e:
-        logger.error(f"File validation error: {e}")
-        return False
+        logger.error(f"File validation error: {e}", exc_info=True)
+        return False, {"error": str(e)}

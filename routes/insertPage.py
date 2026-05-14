@@ -121,10 +121,13 @@ def render():
                     "To Account": t_acc,
                 }
                 obj = InsertRowObject(row_dict)
-                if dbManager.insertExpenseRow(obj):
-                    st.success("Record Added!")
+                success, message = dbManager.insertExpenseRow(obj)
+                if success:
+                    st.success(f"✅ {message}")
+                    # Refresh home page by rerunning app
+                    st.rerun()
                 else:
-                    st.error("Validation Failed or Duplicate Entry.")
+                    st.error(f"❌ {message}")
 
     with col_csv:
         st.subheader("Bulk Upload")
@@ -134,8 +137,10 @@ def render():
             df = pd.read_csv(file)
             obj = InsertFileObject(dfExpenses=df)
             obj.filename = file.name
-            count = dbManager.insertExpenseFile(obj)
-            if count > 0:
-                st.success(f"Imported {count} rows!")
+            success, result = dbManager.insertExpenseFile(obj)
+            if success:
+                st.success(f"✅ Successfully imported {result} rows!")
+                # Refresh home page by rerunning app
+                st.rerun()
             else:
-                st.error("Import failed check file integrity.")
+                st.error(f"❌ Import failed:\n\n{result}")
