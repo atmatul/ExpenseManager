@@ -225,3 +225,5 @@ uv.lock
 .continue
 
 data/
+.docs/
+.github/
