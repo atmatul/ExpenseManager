@@ -1,6 +1,5 @@
 import streamlit as st
 import os
-from routes import homePage as homePage
 import pandas as pd
 
 from routes import homePage, insertPage

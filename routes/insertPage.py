@@ -106,9 +106,9 @@ def render():
             desc = st.text_input("Description")
             date = st.date_input("Date")
             amt = st.number_input("Amount", min_value=0.0)
-            f_category = st.selectbox("From Account", options=opCategory)
+            f_category = st.selectbox("Category", options=opCategory)
             f_acc = st.selectbox("From Account", options=opAccounts)
-            t_acc = st.selectbox("From Account", options=opTowardsCategory)
+            t_acc = st.selectbox("Towards Category", options=opTowardsCategory)
 
             if st.form_submit_button("Submit"):
                 logger.info("User submitted manual entry form.")
